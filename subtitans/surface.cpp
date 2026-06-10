@@ -6,6 +6,8 @@ using namespace DDraw;
 static int s_surfaceCounter = 0;
 static Surface* s_primarySurface = nullptr; // For palettes
 
+Surface* Surface::GetPrimary() { return s_primarySurface; }
+
 static SurfaceDescription CopyDescription(SurfaceDescription* description)
 {
 	SurfaceDescription desc;
@@ -179,7 +181,7 @@ uint32_t FillColorBlt(Surface* surface, const RECT* destinationRect, const uint3
 		}
 		else
 		{
-			const uint32_t destinationWidthBits = destinationWidth * surface->BytesPerPixel; // TODO uint <-> int
+			const uint32_t destinationWidthBits = destinationWidth * surface->BytesPerPixel;
 			const int32_t destinationHeight = destinationRect->bottom - destinationRect->top;
 
 			uint8_t* destination = surface->SurfaceBuffer + (destinationRect->left * surface->BytesPerPixel) + surface->Stride * destinationRect->top;
@@ -403,7 +405,25 @@ uint32_t __stdcall Surface::GetDeviceContext(HDC* param1)
 
 uint32_t __stdcall Surface::GetFlipStatus(uint32_t) { GetLogger()->Error("%s\n", __FUNCTION__); UNIMPLEMENTED_EXIT(); return ResultCode::Ok; }
 uint32_t __stdcall Surface::GetOverlayPosition(void*, void*) { GetLogger()->Error("%s\n", __FUNCTION__); UNIMPLEMENTED_EXIT(); return ResultCode::Ok; }
-uint32_t __stdcall Surface::GetPallete(void*) { GetLogger()->Error("%s\n", __FUNCTION__); UNIMPLEMENTED_EXIT(); return ResultCode::Ok; }
+uint32_t __stdcall Surface::GetPallete(void* result)
+{
+	TRACELOG("%s (%i)\n", __FUNCTION__, Identifier);
+
+	Palette* pal = AttachedPalette;
+	if (!pal && s_primarySurface)
+		pal = s_primarySurface->AttachedPalette;
+
+	if (!pal)
+	{
+		*(IDDrawPalette**)result = nullptr;
+		return ResultCode::InvalidObject; // non-zero -> HAIGU's if-chain short-circuits, skips coloring, no crash
+	}
+
+	// No AddRef: HAIGU only calls GetEntries afterwards and never Releases this palette.
+	// Its lifetime equals the primary surface, so it stays valid throughout.
+	*(IDDrawPalette**)result = pal;
+	return ResultCode::Ok;
+}
 
 uint32_t __stdcall Surface::GetPixelFormat(PixelFormat* result) 
 { 
@@ -481,9 +501,27 @@ uint32_t __stdcall Surface::ReleaseDeviceContext(HDC deviceContext)
 
 	// Ignore any other modifications to this DC
 	if (deviceContext != MemoryDeviceContext.first)
+	{
 		GetLogger()->Error("%s %s\n", __FUNCTION__, "trying to release (possibly invalid) device context");
+		return ResultCode::Ok;
+	}
 
-	return ResultCode::Ok; 
+	if (IsPrimary())
+		PrimaryDrawMutex.lock();
+
+	memcpy(SurfaceBuffer, MemoryDeviceBuffer, Stride * Height);
+
+	if (IsPrimary())
+	{
+		PrimaryDrawMutex.unlock();
+
+		// We just copied fresh GDI output into the primary buffer; mark it valid
+		// so the renderer presents it. matching FillColorBlt/Blt which set
+		// true after modifying the primary surface. 
+		IsPrimaryValid = true;
+	}
+
+	return ResultCode::Ok;
 }
 
 uint32_t __stdcall Surface::Restore() { GetLogger()->Error("%s\n", __FUNCTION__); UNIMPLEMENTED_EXIT(); return ResultCode::Ok; }

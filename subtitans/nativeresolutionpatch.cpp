@@ -55,6 +55,11 @@ namespace NativeResolution{
 		static char* CurrentStringPtr = 0;
 		static char TargetString[] = { '1', '2', '8', '0', 'x', '1', '0', '2', '4', 0x00 };
 		static char NewString[] = { 'N', 'A', 'T', 'I', 'V', 'E', ' ', 'R', 'E', 'S', 'O', 'L', 'U', 'T', 'I', 'O', 'N', 0x00 };
+		// "Native Resolution" in GBK for the Chinese localization; rendered as
+		// Chinese glyphs by HAIGU's WrStr hook. All trail bytes are > 0x7A, so a
+		// byte-wise toupper by the engine cannot corrupt the GBK pairs.
+		static char NewStringCn[] = { '\xD4', '\xAD', '\xC9', '\xFA', '\xB7', '\xD6', '\xB1', '\xE6', '\xC2', '\xCA', 0x00 };
+		static char* ReplacementString = NewString; // switched to NewStringCn in Apply() when HAIGU is loaded
 
 		__declspec(naked) void Implementation()
 		{
@@ -63,7 +68,7 @@ namespace NativeResolution{
 			__asm pushad;
 			__asm pushfd;
 				if (strcmp(TargetString, CurrentStringPtr) == 0)
-					CurrentStringPtr = NewString;
+					CurrentStringPtr = ReplacementString;
 			__asm popfd;
 			__asm popad;
 
@@ -463,6 +468,8 @@ bool NativeResolutionPatch::Apply()
 	NativeResolution::RenameSetting::JmpFromAddress = RenameSettingsDetourAddress;
 	NativeResolution::RenameSetting::JmpBackAddress = NativeResolution::RenameSetting::JmpFromAddress + NativeResolution::RenameSetting::DetourSize;
 	NativeResolution::RenameSetting::FunctionAddress = RenameSettingsFunctionAddress;
+	if (GetModuleHandleA("HAIGU.dll")) // Chinese localization loaded: show the GBK name instead
+		NativeResolution::RenameSetting::ReplacementString = NativeResolution::RenameSetting::NewStringCn;
 	if (!Detour::Create(NativeResolution::RenameSetting::JmpFromAddress, NativeResolution::RenameSetting::DetourSize, (unsigned long)NativeResolution::RenameSetting::Implementation))
 		return false;
 

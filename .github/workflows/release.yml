@@ -1,0 +1,72 @@
+name: Release
+
+# Cut a release by pushing a timestamp tag suffixed with _cn, mirroring upstream's
+# tag style, e.g. 2026-06-11_14-30-00_cn :
+#   PowerShell: $t = (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + '_cn'; git tag $t; git push origin $t
+#   Git Bash : t="$(date +%Y-%m-%d_%H-%M-%S)_cn"; git tag "$t"; git push origin "$t"
+# Most releases just track upstream merges, so a date tag (rather than a vX.Y that
+# would wrongly imply the localization itself changed) is the better fit. The
+# upstream baseline this build sits on is detected automatically (merge-base with
+# UnknownException/SubTitans) and written into the release notes.
+on:
+  push:
+    tags: [ '*_cn' ]
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: windows-2022
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed to compute the upstream merge-base
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Compile
+        shell: cmd
+        run: msbuild SubTitans.sln -p:Configuration=Release -p:Platform=x86 -p:PlatformToolset=v142
+
+      - name: Determine upstream baseline
+        id: base
+        shell: pwsh
+        run: |
+          git remote add upstream https://github.com/UnknownException/SubTitans.git
+          git fetch --no-tags upstream master
+          $sha = git merge-base HEAD upstream/master
+          if (-not $sha) { $sha = "(unknown)"; $short = "(unknown)"; $date = "(unknown)" }
+          else {
+            $short = git rev-parse --short $sha
+            $date  = git show -s --format=%cs $sha
+          }
+          "sha=$sha"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "short=$short" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "date=$date"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Upstream baseline: $short ($date)"
+
+      - name: Create Zip
+        shell: pwsh
+        run: |
+          Rename-Item -Path README.md -NewName readme.txt
+          Rename-Item -Path PROTON-v1_0-v1_1.md -NewName PROTON-v1_0-v1_1.txt
+          Rename-Item -Path LICENSE -NewName license.txt
+          $compress = @{
+            Path = "Release/*.dll", "readme.txt", "PROTON-v1_0-v1_1.txt", "license.txt", "Release/*.ini"
+            DestinationPath = "SubTitans-CN.zip"
+            Force = $True
+          }
+          Compress-Archive @compress
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: SubTitans-CN.zip
+          body: |
+            深海争霸汉化兼容修改版 ${{ github.ref_name }}
+
+            基于上游 SubTitans 基线 commit [`${{ steps.base.outputs.short }}`](https://github.com/UnknownException/SubTitans/commit/${{ steps.base.outputs.sha }})（${{ steps.base.outputs.date }}）构建。
+
+            将 `d3drm.dll`、`subtitans.dll`、`subtitans.ini` 与汉化补丁一并放入游戏目录即可。详见 readme.txt。
