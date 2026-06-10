@@ -377,6 +377,15 @@ static void TerminateOnHeapCorruption(uint32_t gameVersion)
 static Patcher* g_GamePatcher = nullptr;
 static UINT g_TimerResolution = 0;
 
+// Marker export. Our HAIGU-aware build of subtitans.dll exports this symbol; a stock or
+// third-party SubTitans.dll does not. The custom d3drm loader checks for it so it can tell
+// the two builds apart: only the HAIGU-aware build feeds HAIGU the palette pointer
+// (dword_10017704) and implements Device::EnumSurfaces / Surface::GetPallete. If a stock
+// build is detected, the loader skips HAIGU instead of crashing. This export is intentionally
+// a no-op; only its presence matters.
+#pragma comment(linker, "/EXPORT:STCN_HaiguIntegrated=_STCN_HaiguIntegrated@0")
+extern "C" void __stdcall STCN_HaiguIntegrated() {}
+
 #pragma comment(linker, "/EXPORT:InitializeLibrary=_InitializeLibrary@4")
 extern "C" void __stdcall InitializeLibrary(unsigned long gameVersion)
 {

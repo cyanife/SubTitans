@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="subtitans.cpp" />
@@ -21,6 +21,9 @@
       <Filter>patcher</Filter>
     </ClCompile>
     <ClCompile Include="movieheapcorruptionpatch.cpp">
+      <Filter>patches</Filter>
+    </ClCompile>
+    <ClCompile Include="haiguclearpatch.cpp">
       <Filter>patches</Filter>
     </ClCompile>
     <ClCompile Include="scrollpatch.cpp">
@@ -117,6 +120,9 @@
       <Filter>patcher</Filter>
     </ClInclude>
     <ClInclude Include="movieheapcorruptionpatch.h">
+      <Filter>patches</Filter>
+    </ClInclude>
+    <ClInclude Include="haiguclearpatch.h">
       <Filter>patches</Filter>
     </ClInclude>
     <ClInclude Include="scrollpatch.h">

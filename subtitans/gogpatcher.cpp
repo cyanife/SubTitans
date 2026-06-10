@@ -147,5 +147,9 @@ void GOGPatcher::Configure()
 		_patches.push_back(missionSkipPatch);
 	}
 
+	// Note: the HAIGU digit-rendering fix (ASCII bypass) is applied by d3drm's
+	// injector right after it loads HAIGU.dll, so it also covers running the
+	// localization without subtitans.dll. Nothing to register here.
+
 #undef RELOC_ADDR
 }

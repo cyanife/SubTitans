@@ -4,8 +4,27 @@
 #include "palette.h"
 #include "irenderer.h"
 #include "device.h"
+#include <intrin.h> // _ReturnAddress
 
 using namespace DDraw;
+
+// --- HAIGU (Chinese localization) integration ---------------------------------
+// HAIGU reads its palette source through a global slot dword_10017704 and uses it
+// as `*(slot)` -> IDirectDraw. We therefore hand it the ADDRESS of a pointer that
+// holds our fake Device. HAIGU.dll has no ASLR (fixed base 0x10000000); the slot
+// lives in .data at offset 0x17704.
+static Device* g_deviceForHaigu = nullptr;
+
+// EnumSurfaces callback HAIGU passes (IDirectDraw1 style): (surface, desc, context).
+typedef uint32_t(__stdcall* HaiguEnumSurfacesCallback)(IDDrawSurface4*, SurfaceDescription*, void*);
+
+// True when the caller's return address lies inside HAIGU.dll's image
+// [0x10000000, 0x10000000 + SizeOfImage). SizeOfImage is ~0x28000 (.reloc ends at
+// 0x25000 + 0x2948, rounded up to the 0x1000 section alignment).
+static inline bool CalledFromHaigu(void* returnAddress)
+{
+	return (uintptr_t)returnAddress >= 0x10000000 && (uintptr_t)returnAddress < 0x10028000;
+}
 
 Device::Device() 
 {
@@ -72,9 +91,27 @@ uint32_t __stdcall Device::CreateClipper(uint32_t, IDDrawClipper** result, void*
 	return ResultCode::Ok;
 }
 
-uint32_t __stdcall Device::CreatePalette(uint32_t flags, void* palette, IDDrawPalette** result, void* unused) 
-{ 
+uint32_t __stdcall Device::CreatePalette(uint32_t flags, void* palette, IDDrawPalette** result, void* unused)
+{
 	TRACELOG("%s\n", __FUNCTION__);
+
+	// HAIGU builds a throw-away palette on every string draw (it is immediately
+	// discarded by the following GetPallete and never Released). Re-use a single
+	// scratch palette for those calls to avoid a per-frame leak. Game-originated
+	// CreatePalette calls keep the original allocate-each-time behavior.
+	if (CalledFromHaigu(_ReturnAddress()))
+	{
+		static Palette* s_haiguScratchPalette = nullptr;
+		if (!s_haiguScratchPalette)
+		{
+			s_haiguScratchPalette = new Palette();
+			s_haiguScratchPalette->AddRef();
+		}
+		s_haiguScratchPalette->CreatePallete(flags, (uint32_t*)palette);
+		*result = s_haiguScratchPalette;
+		return ResultCode::Ok;
+	}
+
 	*result = new Palette();
 	(*result)->AddRef();
 
@@ -180,7 +217,37 @@ uint32_t __stdcall Device::EnumDisplayModes(uint32_t flags, void* surfaceDescrip
 	return ResultCode::Ok; 
 }
 
-uint32_t __stdcall Device::EnumSurfaces(uint32_t, void*, void*, void*) { GetLogger()->Error("%s\n", __FUNCTION__); UNIMPLEMENTED_EXIT(); return ResultCode::Ok; }
+uint32_t __stdcall Device::EnumSurfaces(uint32_t /*flags*/, void* /*lpDDSD*/, void* context, void* callbackPtr)
+{
+	// HAIGU (hook #3) calls EnumSurfaces(17, NULL, NULL, cb) to fetch the primary
+	// surface's palette. flags=17 = DDENUMSURFACES_ALL|DDENUMSURFACES_DOESEXIST.
+	TRACELOG("%s\n", __FUNCTION__);
+
+	if (!callbackPtr)
+		return ResultCode::InvalidArgument;
+
+	Surface* primary = Surface::GetPrimary();
+	if (!primary)
+		return ResultCode::Ok; // No primary surface yet; HAIGU skips coloring this pass, harmless.
+
+	HaiguEnumSurfacesCallback callback = (HaiguEnumSurfacesCallback)callbackPtr;
+
+	// Mark the description as the primary surface. HAIGU only acts when
+	// desc.caps.caps[0] & DDSCAPS_PRIMARYSURFACE (0x200) (offset 0x68 == HAIGU's a2[26]).
+	SurfaceDescription desc;
+	memset(&desc, 0, sizeof(desc));
+	desc.size = sizeof(SurfaceDescription);
+	desc.flags = SurfaceDescriptionFlag::Caps;
+	desc.caps.caps[0] = SurfaceCapsFlag::Primary; // 0x200
+
+	// DirectDraw contract: the surface handed to the callback is AddRef'd and the
+	// callback Releases it. HAIGU's callback does Release the surface, so we must
+	// AddRef here to balance it - otherwise the primary surface gets destroyed.
+	primary->AddRef();
+	callback((IDDrawSurface4*)primary, &desc, context);
+
+	return ResultCode::Ok;
+}
 uint32_t __stdcall Device::FlipToGDISurface() { GetLogger()->Error("%s\n", __FUNCTION__); UNIMPLEMENTED_EXIT(); return ResultCode::Ok; }
 
 uint32_t __stdcall Device::GetCaps(Caps* caps, Caps* helCaps) 
@@ -270,7 +337,16 @@ uint32_t __stdcall Device::GetDeviceIdentifier(void*,uint32_t) { GetLogger()->Er
 
 uint32_t __stdcall DirectDrawCreate(void*, IDDraw4** result, void*)
 {
-	*result = new Device();
-	(*result)->AddRef();
+	Device* device = new Device();
+	device->AddRef();
+	*result = device;
+
+	// Hand the fake device to HAIGU. HAIGU dereferences its slot as `*(slot)` to get
+	// the IDirectDraw `this`, so we store the ADDRESS of g_deviceForHaigu (which holds
+	// the device). HAIGU.dll: fixed base 0x10000000, slot in .data at +0x17704.
+	g_deviceForHaigu = device;
+	if (HMODULE haigu = GetModuleHandleA("HAIGU.dll"))
+		*(void**)((uint8_t*)haigu + 0x17704) = &g_deviceForHaigu;
+
 	return ResultCode::Ok;
 }

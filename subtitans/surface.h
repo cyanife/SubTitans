@@ -8,6 +8,9 @@ public:
 	Surface(DDraw::SurfaceDescription* description);
 	virtual ~Surface();
 
+	// Returns the current primary surface (used to fetch the palette for HAIGU).
+	static Surface* GetPrimary();
+
 	// IUnknown
 	virtual uint32_t __stdcall QueryInterface(GUID* guid, void** result) override;
 	virtual uint32_t __stdcall AddRef() override;
