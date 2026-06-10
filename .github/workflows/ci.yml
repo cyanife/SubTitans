@@ -1,0 +1,34 @@
+name: CI
+
+# Build check only — no release. Runs on every push / PR to the localization
+# branch so a broken build is caught early. Actual releases are cut by pushing
+# a cn-v* tag (see release.yml).
+on:
+  push:
+    branches: [ haigu/master ]
+  pull_request:
+    branches: [ haigu/master ]
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-2022
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Compile
+        shell: cmd
+        run: msbuild SubTitans.sln -p:Configuration=Release -p:Platform=x86 -p:PlatformToolset=v142
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SubTitans-${{ github.sha }}
+          path: |
+            Release/*.dll
+            Release/*.ini
+          if-no-files-found: error

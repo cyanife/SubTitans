@@ -47,11 +47,12 @@ BOOLEAN __stdcall DllMain(HINSTANCE handle, DWORD reason, LPVOID reserved)
 		if (gameVersion == 0)
 			return FALSE;
 
-		// Allow uninstalling patch by removing SubTitans.dll
-		if (!File::Exists(L"SubTitans.dll"))
-			return TRUE;
+		// HAIGU (Chinese localization) is always injected; SubTitans.dll only toggles
+		// the high-resolution rendering patches. Removing SubTitans.dll disables the
+		// patches but keeps the localization working.
+		bool useSubTitans = File::Exists(L"SubTitans.dll");
 
-		return Injector::Apply(gameVersion);
+		return Injector::Apply(gameVersion, useSubTitans);
 	}
 
 	return TRUE;

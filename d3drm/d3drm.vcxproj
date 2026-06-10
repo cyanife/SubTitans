@@ -77,11 +77,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="haiguasciibypass.h" />
     <ClInclude Include="injector.h" />
     <ClInclude Include="types.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="d3drm.cpp" />
+    <ClCompile Include="haiguasciibypass.cpp" />
     <ClCompile Include="injector.cpp" />
   </ItemGroup>
   <ItemGroup>

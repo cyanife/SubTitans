@@ -1,3 +1,38 @@
+# SubTitans · 深海争霸汉化兼容修改版
+
+本仓库基于 UnknownException 的 [SubTitans](https://github.com/UnknownException/SubTitans)（《深海争霸》非官方补丁）修改，为[深海争霸简体中文补丁](https://github.com/cyanife/Submarine-Titans-Chinese)提供加载与兼容支持。上游全部功能均已保留。
+
+## 安装说明
+
+1. 前往本仓库的 **[Releases](https://github.com/cyanife/SubTitans/releases/latest)** 页面，下载 `SubTitans-CN.zip`
+
+2. 拷贝压缩包内的d3drm.dll、subtitans.dll和subtitans.ini到已经安装好汉化补丁的深海争霸安装目录下。
+
+## 与上游的差异
+
+### 一、汉化（HAIGU）加载与集成
+
+`HAIGU.dll` 是 2001 年奥美娱乐官方汉化的 MFC 注入式 DLL，通过 4 处 inline hook 接管游戏引擎的文字排版与渲染流程，实现中文显示。本修改版使其在现代系统上与 SubTitans 共存：
+
+- **d3drm 注入器**：在 v1.1 代码布局下自动加载 HAIGU，并确保其先于 SubTitans 初始化。
+- **渲染器协作**：补全 DirectDraw 设备指针与调色板接口，并为 HAIGU 字幕行提供逐帧调色板同步。
+- **混装保护**：通过导出标记检测原版 subtitans.dll，防止 hook 冲突导致崩溃。
+
+### 二、兼容性修复
+
+- **HAIGU 数字渲染修复**：在 HAIGU 字形接管入口添加 ASCII 绕过，修复现代 Windows 上数字叠加成色块的问题。
+- **界面文案汉化**：汉化加载时，设置菜单中替代 1024x768 的 "NATIVE RESOLUTION" 选项显示为"原生分辨率"。
+- **`Surface::ReleaseDeviceContext` 回拷修复**（`subtitans/surface.cpp`）：上游缺少 GDI 内存 DC 缓冲到表面缓冲的回拷，GDI 绘制结果会丢失。
+
+### 三、行为说明
+
+- 游戏目录中无 `HAIGU.dll`（未安装汉化）时，本修改版行为与上游完全一致。
+- 删除 `subtitans.dll` 可关闭高分辨率渲染等增强功能，仅保留 d3drm + 汉化的最小配置，数字渲染修复仍然有效。`d3drm.dll` 不可删除。
+
+---
+
+# 以下为原版说明（英文）
+
 # SubTitans ![GitHub all releases](https://img.shields.io/github/downloads/UnknownException/SubTitans/total)
 ## Unofficial patch for Submarine Titans
 
